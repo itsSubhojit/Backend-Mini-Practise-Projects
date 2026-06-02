@@ -5,9 +5,15 @@ import { connectDB } from "./db/index.js"
 dotenv.config()
 const app = express()
 
+connectDB()
+.then(() =>{
+    console.log("Database connected")
 
-app.listen(process.env.PORT || 3000, ()=>{
+    // server running
+    app.listen(process.env.PORT || 3000, ()=>{
     console.log(`Server is running on ${process.env.PORT || 3000}`)
 })
-connectDB()
-
+})
+.catch((error) =>{
+    console.log("Database not connected!", error)
+})
