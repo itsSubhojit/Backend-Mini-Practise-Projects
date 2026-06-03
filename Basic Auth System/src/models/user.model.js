@@ -1,6 +1,7 @@
 import mongoose, {Schema} from "mongoose";
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
+import { ApiError } from "../utils/ApiError.js";
 
 const userSchema = new Schema({
     username:{
@@ -37,6 +38,15 @@ userSchema.pre("save", async function(next){
     }
 })
 
+// Verify password
+userSchema.methods.isPasswordCorrect = async function (password) {
+   try {
+    const verifiedPassword = await bcrypt.compare(password, this.password)
+    return verifiedPassword
+   } catch (error) {
+        throw new ApiError(400, "Something went wrong while verifying password!")
+   }
+}
 
 
 // generating accessToken
