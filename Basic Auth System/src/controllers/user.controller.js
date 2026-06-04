@@ -45,6 +45,10 @@ const loginUser = asyncHandler(async (req, res) =>{
 
     const accessToken = user.generateAccessToken()
     const refreshToken = user.generateRefreshToken()
+
+    user.refreshToken = refreshToken
+    await user.save({validateBeforeSave: false})
+
     const cookieOptions = {
             httpOnly: true,
             secure: true
@@ -62,4 +66,24 @@ const loginUser = asyncHandler(async (req, res) =>{
 })
 // end -login user
 
-export {registerUser, loginUser}
+// logout user
+const logoutUser = asyncHandler(async (req, res) =>{
+    const user = await User.findByIdAndUpdate(req.user._id, {
+        $unset:{refreshToken: 1}
+    })
+
+    const cookieOptions = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res.status(200)
+    .clearCookie("accessToken", cookieOptions)
+    .clearCookie("refreshToken", cookieOptions)
+    .json(new ApiResponse
+        (200, {}, "User logout successfully")
+    )
+})
+// end -logout user
+
+export {registerUser, loginUser, logoutUser}
