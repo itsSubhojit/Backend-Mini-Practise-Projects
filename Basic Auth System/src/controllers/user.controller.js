@@ -2,6 +2,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
+import jwt from "jsonwebtoken";
 
 
 // register user
@@ -86,4 +87,36 @@ const logoutUser = asyncHandler(async (req, res) =>{
 })
 // end -logout user
 
-export {registerUser, loginUser, logoutUser}
+// refreshaccess token
+const generateRefreshAccessToken = asyncHandler(async (req, res) =>{
+    const token = req.cookies.refreshToken || req.headers.authorization?.split(" ")[1]
+    
+    const verifyToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET)
+    if(!verifyToken){
+        throw new ApiError(401, "Unauthorized access!!!")
+    }
+
+    const user = await User.findById(verifyToken._id).select("-password")
+    if(!user){
+        throw new ApiError(404, "User refresh token not found!")
+    }
+
+    if(!token || token !== user.refreshToken ){
+        throw new ApiError(401, "Unauthorized access!!!")
+    }
+
+    const newAccessToken = await user.generateAccessToken()
+    const cookieOptions ={
+        httpOnly: true,
+        secure: true
+    }
+
+    return res.status(200)
+    .cookie("accessToken", newAccessToken, cookieOptions)
+    .json(new ApiResponse
+        (200, newAccessToken, "Access Granted")
+    )
+})
+// end -refreshaccess token
+
+export {registerUser, loginUser, logoutUser, generateRefreshAccessToken}
