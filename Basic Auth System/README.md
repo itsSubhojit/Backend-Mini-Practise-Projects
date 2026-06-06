@@ -164,7 +164,6 @@ npm run dev
 
 ## 🗺️ Future Goals
 
-- [ ] `refreshAccessToken` endpoint — silent token refresh without re-login
 - [ ] Frontend integration — React + Vite with AuthContext and PrivateRoute
 - [ ] Email verification on registration
 - [ ] Password reset via email
