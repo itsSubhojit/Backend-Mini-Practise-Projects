@@ -12,7 +12,8 @@ const urlSchema = new Schema({
         unique:true
     },
     click:{
-        type:Number
+        type:Number,
+        default: 0
     }
 }, {timestamps: true})
 
