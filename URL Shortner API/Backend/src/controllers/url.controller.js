@@ -10,7 +10,7 @@ import validator from "validator";
 const shortenUrl = asyncHandler(async(req, res) =>{
     const {longUrl} = req.body
     if(!longUrl){
-        throw new ApiError(400, "longUrl field can't ne empty")
+        throw new ApiError(400, "longUrl field can't be empty")
     }
 
     const optionsUrl = {
@@ -28,15 +28,32 @@ const shortenUrl = asyncHandler(async(req, res) =>{
         .json(new ApiResponse(200, existLongUrl.shortUrl, "ShortUrl Generated...")) 
     }
 
-    const shortUrl = await nanoid(10)
+    const shortUrl = nanoid(10)
     const saveShortUrl = await Url.create({
         longUrl: longUrl,
         shortUrl: shortUrl
     })
-    return res.status(200)
+    return res.status(201)
     .json(new ApiResponse(201, saveShortUrl, "New ShortUrl Generated..."))
-    
+
+})
+
+const redirectUrl = asyncHandler(async(req, res) =>{
+    const {shortUrl} = req.params
+    if(!shortUrl){
+        throw new ApiError(400, "Invalid URL!")
+    }
+
+    const findShortUrl = await Url.findOne({shortUrl})
+    if(!findShortUrl){
+        throw new ApiError(404, "Not Found!!!")
+    }
+    findShortUrl.click++ ;
+    await findShortUrl.save()
+
+    return res.redirect(findShortUrl.longUrl)
+
 })
 
 
-export {shortenUrl}
+export {shortenUrl, redirectUrl}
