@@ -2,6 +2,7 @@ import { Url } from "../models/url.models.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { safeBrowsing } from "../services/safeBrowsing.service.js";
 import { nanoid } from "nanoid";
 import validator from "validator";
 
@@ -21,6 +22,8 @@ const shortenUrl = asyncHandler(async(req, res) =>{
     if(!isValidUrl){
         throw new ApiError(400, "Invalid Url!");
     }
+
+    await safeBrowsing(longUrl)
 
     const existLongUrl = await Url.findOne({longUrl})
     if(existLongUrl){
