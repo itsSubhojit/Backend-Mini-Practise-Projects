@@ -174,7 +174,7 @@ npm run dev
 
 ## 👨‍💻 Author
 
-csubhojit
+**Subhojit Chakraborty**
 
 ---
 
