@@ -24,6 +24,11 @@ const userSchema = new Schema({
     },
     refreshToken:{
         type:String
+    },
+    tokenVersion:{
+        type:Number,
+        default:0,
+        required:true
     }
 }, {timestamps: true})
 

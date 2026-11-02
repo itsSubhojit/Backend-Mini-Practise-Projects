@@ -20,4 +20,22 @@ const verifyJwtTokens = asyncHandler(async (req, res, next) =>{
     next();
 })
 
-export {verifyJwtTokens}
+const checkTokenVersion = asyncHandler(async(req, res, next) =>{
+    const token = req.headers['authorization'].split(' ')[1]
+    if(!token){
+        throw new ApiError(401, "Token Not Found!!!")
+    }
+
+    const decodePayload = await jwt.verify(token, process.env.JWT_SECRET)
+    
+    const user = decodePayload.userId
+    const findUser = await User.findById(user)
+    if(decodePayload.tokenVersion !== findUser.tokenVersion){
+        throw new ApiError(401, "Unauthorized: Session Expired")
+    }
+
+    req.user = user
+    next()
+})
+
+export {verifyJwtTokens, checkTokenVersion}
