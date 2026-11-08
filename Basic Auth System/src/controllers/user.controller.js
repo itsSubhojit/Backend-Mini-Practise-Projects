@@ -69,9 +69,13 @@ const loginUser = asyncHandler(async (req, res) =>{
 
 // logout user
 const logoutUser = asyncHandler(async (req, res) =>{
-    const user = await User.findByIdAndUpdate(req.user._id, {
-        $unset:{refreshToken: 1}
-    })
+    // req.user is already the full Mongoose document from verifyJwtTokens middleware
+    // no need for a redundant findById call
+    const user = req.user
+
+    // increment tokenVersion (invalidates all existing tokens) + unset refreshToken in one save
+    user.refreshToken = undefined
+    await user.incrementTokenVersion() // internally calls this.save()
 
     const cookieOptions = {
         httpOnly: true,

@@ -64,7 +64,8 @@ userSchema.methods.generateAccessToken = function(){
         _id: this._id,
         username: this.username,
         fullName: this.fullName,
-        email: this.email
+        email: this.email,
+        tokenVersion: this.tokenVersion
     },
     process.env.ACCESS_TOKEN_SECRET,
     options
@@ -81,6 +82,12 @@ userSchema.methods.generateRefreshToken = function(){
     options
     )
  } 
+
+ //increment tokenVersion
+ userSchema.methods.incrementTokenVersion = async function(){
+    this.tokenVersion += 1
+    await this.save({validateBeforeSave: false})
+ }
 
 
 export const User = mongoose.model("User", userSchema)

@@ -5,37 +5,31 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 
 const verifyJwtTokens = asyncHandler(async (req, res, next) =>{
-    const accessToken = req.cookies.accessToken
+    // Read token from cookie OR Authorization header (supports Postman + browser)
+    const accessToken = req.cookies?.accessToken
+                     || req.headers['authorization']?.split(' ')[1]
+
     if(!accessToken){
-        throw new ApiError(401, "Invalid access token!")
+        throw new ApiError(401, "Access token not found!")
     }
 
-    const decodedAccessToken = await jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET)
-    const user = await User.findById(decodedAccessToken._id).select("-password -refreshToken")
+    // Verify JWT
+    const decoded = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET)
+
+    // Find user in DB
+    const user = await User.findById(decoded._id).select("-password -refreshToken")
     if(!user){
-        throw new ApiError(404, "User id not found!")
+        throw new ApiError(404, "User not found!")
     }
 
+    // Check tokenVersion — invalidates old tokens after logout/password-change
+    if(decoded.tokenVersion !== user.tokenVersion){
+        throw new ApiError(401, "Session expired! Please login again.")
+    }
+
+    // Assign the full Mongoose document so req.user._id works everywhere
     req.user = user
     next();
 })
 
-const checkTokenVersion = asyncHandler(async(req, res, next) =>{
-    const token = req.headers['authorization'].split(' ')[1]
-    if(!token){
-        throw new ApiError(401, "Token Not Found!!!")
-    }
-
-    const decodePayload = await jwt.verify(token, process.env.JWT_SECRET)
-    
-    const user = decodePayload.userId
-    const findUser = await User.findById(user)
-    if(decodePayload.tokenVersion !== findUser.tokenVersion){
-        throw new ApiError(401, "Unauthorized: Session Expired")
-    }
-
-    req.user = user
-    next()
-})
-
-export {verifyJwtTokens, checkTokenVersion}
+export { verifyJwtTokens }
