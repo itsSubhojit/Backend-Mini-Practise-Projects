@@ -9,11 +9,15 @@ A production-ready REST API for user authentication built with Node.js, Express,
 - **User Registration** — with duplicate username/email detection
 - **User Login** — via username or email
 - **JWT Authentication** — access token + refresh token strategy
+- **Token Versioning** — every logout invalidates all existing tokens via a version counter baked into the JWT
+- **Refresh Access Token** — issue a new access token using a valid refresh token
 - **Secure Cookies** — `httpOnly` + `secure` cookie flags
 - **Password Hashing** — bcrypt with 10 salt rounds
-- **Protected Routes** — `verifyJWT` middleware
-- **User Logout** — clears cookies + removes refresh token from DB
-- **Custom Error Handling** — `ApiError` class with stack trace
+- **Zod Input Validation** — schema-based validation on register and login with clean field-level error messages
+- **Rate Limiting** — 10 requests per 5 minutes per IP on public routes
+- **Protected Routes** — unified `verifyJwtTokens` middleware (cookie + header support)
+- **User Logout** — increments token version + clears cookies + removes refresh token from DB
+- **Custom Error Handling** — `ApiError` class with stack trace and custom errors array
 - **Consistent API Responses** — `ApiResponse` class with status-aware `success` flag
 - **Async Error Wrapper** — `asyncHandler` utility, no repetitive try/catch
 
@@ -27,7 +31,9 @@ A production-ready REST API for user authentication built with Node.js, Express,
 | Framework | Express.js |
 | Database | MongoDB + Mongoose |
 | Auth | JSON Web Tokens (jsonwebtoken) |
+| Validation | Zod |
 | Password | bcrypt |
+| Rate Limiting | express-rate-limit |
 | Config | dotenv |
 | Dev Tool | nodemon |
 | Cookies | cookie-parser |
@@ -39,20 +45,25 @@ A production-ready REST API for user authentication built with Node.js, Express,
 ```
 src/
 ├── controllers/
-│   └── user.controller.js       # registerUser, loginUser, logoutUser
+│   └── user.controller.js          # registerUser, loginUser, logoutUser, generateRefreshAccessToken
 ├── db/
-│   └── index.js                 # MongoDB connection
+│   └── index.js                    # MongoDB connection
 ├── middlewares/
-│   └── auth.middleware.js       # verifyJWT middleware
+│   ├── auth.middleware.js          # verifyJwtTokens (JWT verify + tokenVersion check)
+│   ├── errorHandler.js             # Global error handler
+│   ├── rate-limiter.middleware.js  # express-rate-limit config
+│   └── validate.middleware.js      # Zod validation middleware (register + login)
 ├── models/
-│   └── user.model.js            # User schema, bcrypt hooks, JWT methods
+│   └── user.model.js               # User schema, bcrypt hook, JWT methods, incrementTokenVersion
 ├── routes/
-│   └── user.routes.js           # API routes
+│   └── user.routes.js              # API routes
 ├── utils/
-│   ├── ApiError.js              # Custom error class
-│   ├── ApiResponse.js           # Standard response class
-│   └── asyncHandler.js          # Async wrapper utility
-└── index.js                     # App entry point
+│   ├── ApiError.js                 # Custom error class (statusCode, message, errors[])
+│   ├── ApiResponse.js              # Standard response class
+│   └── asyncHandler.js             # Async wrapper utility
+├── validators/
+│   └── user.validator.js           # Zod schemas: registerSchema, loginSchema
+└── index.js                        # App entry point
 ```
 
 ---
@@ -101,7 +112,8 @@ npm run dev
 |--------|----------|--------------|-------------|
 | POST | `/register` | ❌ | Register a new user |
 | POST | `/login` | ❌ | Login with username or email |
-| POST | `/logout` | ✅ | Logout current user |
+| POST | `/logout` | ✅ | Logout and invalidate token |
+| POST | `/refresh-accesstoken` | ❌ | Get a new access token via refresh token |
 
 ---
 
@@ -112,18 +124,36 @@ npm run dev
 {
   "username": "testuser",
   "fullName": "Test User",
-  "email": "test@test.com",
-  "password": "123456"
+  "email": "test@example.com",
+  "password": "password123"
 }
 ```
 
-**Response:**
+**Validation rules:**
+- `username` — min 3 characters
+- `fullName` — min 3 characters
+- `email` — valid email format
+- `password` — min 8, max 16 characters
+
+**Success Response:**
 ```json
 {
-  "statuscode": 200,
+  "statusCode": 200,
   "message": "User registered successfully",
-  "data": { "_id": "...", "username": "testuser", "fullName": "Test User", "email": "test@test.com" },
+  "data": { "_id": "...", "username": "testuser", "fullName": "Test User", "email": "test@example.com" },
   "success": true
+}
+```
+
+**Validation Error Response:**
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": [
+    { "field": "password", "message": "Password must be at least 8 characters" }
+  ],
+  "data": null
 }
 ```
 
@@ -135,8 +165,7 @@ npm run dev
 ```json
 {
   "username": "testuser",
-  "email": "test@test.com",
-  "password": "123456"
+  "password": "password123"
 }
 ```
 
@@ -149,7 +178,48 @@ npm run dev
 ### Logout User
 **POST** `/logout`
 
-> Requires valid `accessToken` cookie. Clears both cookies and removes refresh token from database.
+> Requires a valid `accessToken` — send via cookie or `Authorization: Bearer <token>` header.
+
+- Increments `tokenVersion` in DB — all previously issued tokens are immediately invalidated
+- Clears `accessToken` and `refreshToken` cookies
+- Removes refresh token from database
+
+---
+
+### Refresh Access Token
+**POST** `/refresh-accesstoken`
+
+> Send the `refreshToken` via cookie or `Authorization: Bearer <token>` header.
+
+**Response:** Issues a new `accessToken` as a cookie.
+
+```json
+{
+  "statusCode": 200,
+  "message": "Access Granted",
+  "data": { "accessToken": "..." },
+  "success": true
+}
+```
+
+---
+
+## 🔑 Token Versioning
+
+Token versioning ensures that **logging out truly invalidates the session** — even if someone still holds the old JWT.
+
+**How it works:**
+- A `tokenVersion` counter (starts at `0`) is stored on the user document in MongoDB
+- Every access token has `tokenVersion` baked into its payload at the time of login
+- On every protected request, `verifyJwtTokens` compares the token's `tokenVersion` against the DB value
+- On logout, `tokenVersion` is incremented by 1 — all old tokens no longer match and are rejected with `401 Session expired`
+
+```
+Login  → token issued with tokenVersion: 0
+Request → token has 0, DB has 0 → ✅ allowed
+Logout → DB tokenVersion becomes 1
+Old token → has 0, DB has 1 → ❌ 401 Session expired
+```
 
 ---
 
@@ -159,6 +229,9 @@ npm run dev
 - Refresh tokens are stored in DB and invalidated on logout
 - Cookies are `httpOnly` (XSS protection) and `secure` (HTTPS only)
 - Sensitive fields (`password`, `refreshToken`) are never returned in API responses
+- Token versioning prevents reuse of old JWTs after logout
+- Zod validates and trims all inputs before they reach the controller
+- Rate limiting (10 requests / 5 min) on public routes guards against brute force
 
 ---
 
@@ -166,9 +239,7 @@ npm run dev
 
 - [ ] Frontend integration — React + Vite with AuthContext and PrivateRoute
 - [ ] Email verification on registration
-- [ ] Password reset via email
-- [ ] Rate limiting — prevent brute force attacks
-- [ ] Upgrade to full-stack RAG Chatbot using this auth system as base
+- [ ] Password reset via email (forgot password flow)
 
 ---
 
