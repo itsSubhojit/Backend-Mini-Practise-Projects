@@ -1,10 +1,10 @@
 class ApiError extends Error {
-    constructor(statusCode, message="Something went wrong!"){
+    constructor(statusCode, message="Something went wrong!", errors = []){
 
         super(message)
         this.statusCode = statusCode
         this.message = message
-        this.errors = []
+        this.errors = errors   // accepts custom errors array (e.g. Zod validation errors)
         this.data = null
         this.success = false
 

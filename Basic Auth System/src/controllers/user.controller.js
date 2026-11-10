@@ -8,9 +8,9 @@ import jwt from "jsonwebtoken";
 // register user
 const registerUser = asyncHandler(async (req, res) =>{
     const {username, fullName, email, password} = req.body
-    if(username === "" || fullName === "" || email === "" || password === ""){
-        throw new ApiError(400, "All fields are required")
-    }
+
+    // No manual empty-string check needed — Zod validator handles this before the controller runs
+
     const existUser = await User.findOne({$or: [{username: username},{email: email}]})
     if(existUser){
         throw new ApiError(400, "User already registered!")
@@ -30,9 +30,8 @@ const registerUser = asyncHandler(async (req, res) =>{
 // login user
 const loginUser = asyncHandler(async (req, res) =>{
     const {username, email, password} = req.body
-    if(username === "" || email === "" || password === "" ){
-        throw new ApiError(400, "All fields are required")
-    }
+
+    // No manual empty-string check needed — Zod loginValidator runs before this controller
 
     const user = await User.findOne({$or: [{username: username},{email: email}]})
     if(!user){
@@ -55,13 +54,14 @@ const loginUser = asyncHandler(async (req, res) =>{
             secure: true
         }
 
-    const loginUser = await User.findById(user._id).select("-password -refreshToken")
+    // Avoid a 3rd DB call — build the response from the existing user object
+    const { password: _, refreshToken: __, ...userResponse } = user.toObject()
 
     return res.status(200)
     .cookie("accessToken", accessToken, cookieOptions)
     .cookie("refreshToken", refreshToken, cookieOptions)
     .json(new ApiResponse
-        (200, loginUser, "LoggedIn successfully")
+        (200, userResponse, "LoggedIn successfully")
     )
 
 })
@@ -93,23 +93,30 @@ const logoutUser = asyncHandler(async (req, res) =>{
 
 // refreshaccess token
 const generateRefreshAccessToken = asyncHandler(async (req, res) =>{
-    const token = req.cookies.refreshToken || req.headers.authorization?.split(" ")[1]
-    
-    const verifyToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET)
-    if(!verifyToken){
-        throw new ApiError(401, "Unauthorized access!!!")
+    const token = req.cookies?.refreshToken || req.headers.authorization?.split(" ")[1]
+
+    if(!token){
+        throw new ApiError(401, "Refresh token not found!")
+    }
+
+    // jwt.verify throws if invalid — wrap it to return a clean 401
+    let verifyToken
+    try {
+        verifyToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET)
+    } catch (error) {
+        throw new ApiError(401, "Invalid or expired refresh token!")
     }
 
     const user = await User.findById(verifyToken._id).select("-password")
     if(!user){
-        throw new ApiError(404, "User refresh token not found!")
+        throw new ApiError(404, "User not found!")
     }
 
-    if(!token || token !== user.refreshToken ){
-        throw new ApiError(401, "Unauthorized access!!!")
+    if(token !== user.refreshToken){
+        throw new ApiError(401, "Refresh token is expired or already used!")
     }
 
-    const newAccessToken = await user.generateAccessToken()
+    const newAccessToken = user.generateAccessToken()
     const cookieOptions ={
         httpOnly: true,
         secure: true
@@ -118,7 +125,7 @@ const generateRefreshAccessToken = asyncHandler(async (req, res) =>{
     return res.status(200)
     .cookie("accessToken", newAccessToken, cookieOptions)
     .json(new ApiResponse
-        (200, newAccessToken, "Access Granted")
+        (200, { accessToken: newAccessToken }, "Access Granted")
     )
 })
 // end -refreshaccess token

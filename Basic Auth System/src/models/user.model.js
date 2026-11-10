@@ -35,15 +35,9 @@ const userSchema = new Schema({
 
 
 // Password Hashing using bcrypt
-userSchema.pre("save", async function(next){
-    try {
-        if(!this.isModified("password")) return;
-        const hashedPassword = await bcrypt.hash(this.password, 10)
-        this.password = hashedPassword
-    } catch (error) {
-        console.log("Something went wrong while generating password hash!", error)
-        return(error);
-    }
+userSchema.pre("save", async function(){
+    if(!this.isModified("password")) return;
+    this.password = await bcrypt.hash(this.password, 10)
 })
 
 // Verify password
