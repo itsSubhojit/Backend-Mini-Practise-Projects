@@ -51,7 +51,8 @@ const loginUser = asyncHandler(async (req, res) =>{
 
     const cookieOptions = {
             httpOnly: true,
-            secure: true
+            secure: true,
+            sameSite: "strict"
         }
 
     // Avoid a 3rd DB call — build the response from the existing user object
@@ -79,7 +80,8 @@ const logoutUser = asyncHandler(async (req, res) =>{
 
     const cookieOptions = {
         httpOnly: true,
-        secure: true
+        secure: true,
+        sameSite: "strict"
     }
 
     return res.status(200)
@@ -119,7 +121,8 @@ const generateRefreshAccessToken = asyncHandler(async (req, res) =>{
     const newAccessToken = user.generateAccessToken()
     const cookieOptions ={
         httpOnly: true,
-        secure: true
+        secure: true,
+        sameSite: "strict"
     }
 
     return res.status(200)

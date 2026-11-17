@@ -14,7 +14,12 @@ const verifyJwtTokens = asyncHandler(async (req, res, next) =>{
     }
 
     // Verify JWT
-    const decoded = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET)
+    let decoded // Declare variable in the outer scope so it can be accessed inside and outside the try...catch block
+    try {
+        decoded = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET)
+    } catch (error) {
+        throw new ApiError(401, "Invalid or expired access token")
+    }
 
     // Find user in DB
     const user = await User.findById(decoded._id).select("-password -refreshToken")

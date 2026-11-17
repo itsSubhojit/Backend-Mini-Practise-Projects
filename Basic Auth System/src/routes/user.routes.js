@@ -14,7 +14,7 @@ router.route("/login").post(limiter, loginValidator, loginUser)
 router.route("/logout").post(verifyJwtTokens, logoutUser)
 
 //secure refreshAccessToken
-router.route("/refresh-accesstoken").post(generateRefreshAccessToken)
+router.route("/refresh-accesstoken").post(limiter, generateRefreshAccessToken)
 
 
 export {router}
